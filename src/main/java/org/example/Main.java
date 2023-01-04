@@ -1,21 +1,24 @@
 package org.example;
 
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class Main {
     public static final int CELL_ROW = 142;
-    public static final int CELL_IDX = 27;
+        public static final int CELL_IDX = 27;
     public static final String ROOT = System.getProperty("user.dir");
-    public static final String PATH1 = "/BOM录入模板.xlsx";
-    public static final String PATH2 = "/工艺卡.xlsx";
-    public static final String PATH3 = "/导入数据.xlsx";
+    public static final String PATH1 = "/模板/BOM录入模板.xlsx";
+    public static final String PATH2 = "/工艺卡/工艺卡.xlsx";
+    public static final String PATH3 = "/数据/BOM导入数据.xlsx";
 
     /**
      * 获取模板
@@ -30,26 +33,36 @@ public class Main {
         Workbook wb = WorkbookFactory.create(template);
         Sheet tSheet = wb.getSheet("物料清单#单据头(FBillHead)");
 
+        //创建容器
+        List<String> title1 = new ArrayList<>();
+        List<String> title2 = new ArrayList<>();
         List<String> parentList = new ArrayList<>();
         List<String> itemList = new ArrayList<>();
 
-        Row row = tSheet.getRow(2);
-        for (int i = 0; i < CELL_ROW; i++) {
-            List<String> temp = null;
-            Cell cell = row.getCell(i);
-            if (i < CELL_IDX)
-                temp = parentList;
-            else
-                temp = itemList;
-            if (cell != null) {
-                cell.setCellType(CellType.STRING);
-                temp.add(cell.getStringCellValue());
-            } else {
-                temp.add("");
+        //存入数据
+        for (int i = 0; i < 3; i++) {
+            Row row = tSheet.getRow(i);
+            for (int j = 0; j < CELL_ROW; j++) {
+                List<String> temp = null;
+                Cell cell = row.getCell(j);
+                if (i == 2 && j < CELL_IDX)
+                    temp = parentList;
+                else if (i == 2)
+                    temp = itemList;
+                else if (i == 1)
+                    temp = title2;
+                else
+                    temp = title1;
+                if (cell != null) {
+                    cell.setCellType(CellType.STRING);
+                    temp.add(cell.getStringCellValue());
+                } else {
+                    temp.add("");
+                }
             }
         }
 
-        List<List<String>> result = Arrays.asList(parentList, itemList);
+        List<List<String>> result = Arrays.asList(title1, title2, parentList, itemList);
         wb.close();
         return result;
     }
@@ -82,9 +95,9 @@ public class Main {
                     //封装子项Bom
                     Bom bom = new Bom();
                     Row row = sheet.getRow(j);
-                        //设置bomId
+                    //设置bomId
                     bom.setBomId(row.getCell(1).getStringCellValue());
-                        //设置bom组成
+                    //设置bom组成
                     List<String> list = bom.getItems();
                     List<Integer> asList = Arrays.asList(3, 4, 8);
                     for (Integer integer : asList) {
@@ -93,14 +106,14 @@ public class Main {
                             list.add(cell.getStringCellValue());
                         }
                     }
-                        //设置bom回路
+                    //设置bom回路
                     Cell cell = row.getCell(14);
                     cell.setCellType(CellType.STRING);
                     bom.setCircuit(cell.getStringCellValue());
 
                     //存入容器
-                    if(!bom.getBomId().equals("")){
-                        if(bom.getItems().size() > 0)
+                    if (!bom.getBomId().equals("")) {
+                        if (bom.getItems().size() > 0)
                             singleChildItems.add(bom);
                         else
                             multiChildItems.add(bom);
@@ -130,10 +143,10 @@ public class Main {
                 for (int j = 0; j < circuitList.length; j++) {
                     String circuit = circuitList[j];
                     if (circuit != null && !circuit.equals("")) {
-                        for (int k = 0; j < singleChildItems.size(); j++) {
+                        for (int k = 0; k < singleChildItems.size(); k++) {
                             Bom single = singleChildItems.get(k);
-                            Boolean flag = null;
-                            if(circuitList.length > 0){
+                            Boolean flag = true;
+                            if (circuitList.length > 1) {
                                 flag = single.getCircuit().equals(circuit);
                             } else {
                                 flag = single.getCircuit().contains(circuit) && !single.getCircuit().equals(circuit);
@@ -172,14 +185,14 @@ public class Main {
 
             //子项存入结果容器
             for (Bom item : parentItems) {
-                if(!result.contains(item)){
+                if (!result.contains(item)) {
                     result.add(item);
                 }
             }
         }
 
         //测试
-        System.out.println(result.size());
+        /*System.out.println(result.size());
         for (Bom bom : result) {
             System.out.println(bom.getBomId());
             for (int i = 0; i < bom.getItems().size(); i++) {
@@ -193,14 +206,87 @@ public class Main {
                 System.out.println(i + 1 + " = " + code);
             }
             System.out.println("-------------------------------");
-        }
+        }*/
 
         wb.close();
-        return result;
+        return (List<Bom>) result.stream().sorted(Comparator.reverseOrder()).collect(Collectors.toList());
     }
 
     public static void main(String[] args) throws IOException {
+        //创建导入数据Excel
+        Workbook wb = new XSSFWorkbook();
+        Sheet sheet = wb.createSheet("物料清单#单据头(FBillHead)");
+
+        //读取模板和数据
         List<List<String>> template = getTemplate();
-        List<Bom> data = getData();
+        List<Bom> bomList = getData();
+
+        //填充数据
+        int rowIdx = 0;
+        for (int i = 0; i < bomList.size() + 2; i++) {
+            int no = 300001;
+            Row row = sheet.createRow(rowIdx);
+            if (rowIdx < 2) {
+                List<String> title = null;
+                if (rowIdx == 0)
+                    title = template.get(0);
+                else if (rowIdx == 1)
+                    title = template.get(1);
+                //填入标题
+                for (int j = 0; j < CELL_ROW; j++) {
+                    try {
+                        Cell cell = row.createCell(j);
+                        cell.setCellValue(title.get(j));
+                    } catch (Exception e) {
+                        System.out.println(j);
+                    }
+                }
+                rowIdx = rowIdx + 1;
+            } else {
+                Bom bom = bomList.get(i - 2);
+                //填入父项物料
+                List<String> parents = template.get(2);
+                for (int j = 0; j < CELL_IDX; j++) {
+                    Cell cell = row.createCell(j);
+                    cell.setCellValue(parents.get(j));
+                    //填入规则
+                    if (j == 0)
+                        cell.setCellValue(no + i - 2);
+                    else if (j == 15)
+                        cell.setCellValue(bom.getBomId());
+                }
+
+                //填入子项物料
+                List<Object> items = bom.getItems();
+                for (int k = 0; k < items.size(); k++) {
+                    if(k > 0){
+                        rowIdx = rowIdx + 1;
+                        row = sheet.createRow(rowIdx);
+                    }
+                    //填入模板
+                    List<String> list = template.get(3);
+                    for (int l = CELL_IDX; l < CELL_ROW; l++) {
+                        Cell cell = row.createCell(l);
+                        cell.setCellValue(list.get(l - CELL_IDX));
+                        Object item = items.get(k);
+                        if (l == (CELL_IDX + 7) && k == 0 && item.toString().matches("^S+[0-9]+")){
+                           cell.setCellValue("m");
+                        } else if(l == (CELL_IDX + 1)) {
+                            if (item instanceof Bom)
+                                cell.setCellValue(((Bom)item).getBomId());
+                            else
+                                cell.setCellValue(((String) item));
+                        } else if (l == CELL_IDX)
+                            cell.setCellValue(k + 1);
+                    }
+                }
+                rowIdx = rowIdx + 1;
+            }
+        }
+
+        FileOutputStream out = new FileOutputStream(ROOT + PATH3);
+        wb.write(out);
+        wb.close();
+
     }
 }
